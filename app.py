@@ -23,10 +23,10 @@ with st.container():
     st.title("LSTM Stock Price Predictor")
     st.write("Select a stock from the list, or enter a custom ticker from Yahoo Finance (e.g., 'RELIANCE.NS', 'TATAMOTORS.NS').")
     st.write("The model will be trained live if a pre-trained version for the selected parameters isn't available. This might take a few minutes.")
+    st.write("Train the model on tmrw date after the market closes so that you can predict for next day close price")
     
 
 # --- 1. LSTM Model Definition ---
-
 
 
 def get_metrics(actuals, predictions):
@@ -49,7 +49,7 @@ def create_tf_model(input_shape, hidden_units, learning_rate):
 with st.container():
     st.sidebar.header("Data Range Selection")
     start_date = st.sidebar.date_input("Start Date", value=datetime.now() - timedelta(days=10 * 365))
-    end_date = st.sidebar.date_input("End Date", value=datetime.now(), max_value=datetime.now())
+    end_date = st.sidebar.date_input("End Date", value=datetime.now(), max_value=datetime.now() + timedelta(days=1))
 
     if start_date >= end_date:
         st.sidebar.error("Error: End date must be after start date.")
