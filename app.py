@@ -106,7 +106,10 @@ with st.container():
                 df = load_data(ticker, start_date, end_date)
 
                 if df is None:
-                    st.error(f"Could not download data for ticker '{ticker}'. Please check the ticker symbol.")
+                    if end_date > datetime.now().date():
+                        st.error(f"Could not fetch data for '{ticker}'. Data for future dates is not available yet. Please select today or an earlier date.")
+                    else:
+                        st.error(f"Could not download data for ticker '{ticker}'. Please check the ticker symbol and the selected date range.")
                 else:
                     # Feature Engineering
                     df['SMA'] = df['Close'].rolling(window=20).mean()
@@ -169,6 +172,14 @@ with st.container():
                     else:
                         st.success(f"Loading pre-trained model for {ticker} from {model_path}")
                         model = load_model(model_path)
+                    
+                    with open(model_path, "rb") as fp:
+                        st.download_button(
+                            label="Download Model",
+                            data=fp,
+                            file_name=model_name,
+                            mime="application/octet-stream"
+                        )
 
                     # --- 9. Prediction and Evaluation ---
                     test_predictions_scaled = model.predict(X_test)
@@ -207,6 +218,14 @@ with st.container():
                     st.pyplot(fig)
                     fig.savefig(plot_path)
                     st.info(f"Plot saved to {plot_path}")
+                    
+                    with open(plot_path, "rb") as fp:
+                        st.download_button(
+                            label="Download Plot",
+                            data=fp,
+                            file_name=plot_name,
+                            mime="image/png"
+                        )
                     plt.close(fig)
 
             except Exception as e:
