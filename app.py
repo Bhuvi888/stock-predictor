@@ -48,8 +48,8 @@ def create_tf_model(input_shape, hidden_units, learning_rate):
 # --- 3. Main Content ---
 with st.container():
     st.sidebar.header("Data Range Selection")
-    start_date = st.sidebar.date_input("Start Date", datetime.now() - timedelta(days=10 * 365))
-    end_date = st.sidebar.date_input("End Date", datetime.now(), max_value=datetime.now())
+    start_date = st.sidebar.date_input("Start Date", value=datetime.now() - timedelta(days=10 * 365))
+    end_date = st.sidebar.date_input("End Date", value=datetime.now(), max_value=datetime.now())
 
     if start_date >= end_date:
         st.sidebar.error("Error: End date must be after start date.")
