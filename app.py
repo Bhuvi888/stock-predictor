@@ -30,9 +30,11 @@ with st.container():
 
 
 def get_metrics(actuals, predictions):
+    actuals = actuals.flatten()
+    predictions = predictions.flatten()
     rmse = np.sqrt(np.mean((predictions - actuals)**2))
-    mape = np.mean(np.abs((actuals - predictions) / actuals)) * 100
-    smape = np.mean(2 * np.abs(predictions - actuals) / (np.abs(actuals) + np.abs(predictions))) * 100
+    mape = np.mean(np.abs((actuals - predictions) / np.where(actuals == 0, 1, actuals))) * 100
+    smape = np.mean(2 * np.abs(predictions - actuals) / (np.abs(actuals) + np.abs(predictions) + 1e-8)) * 100
     return rmse, mape, smape
 
 def create_tf_model(input_shape, hidden_units, learning_rate):
@@ -45,15 +47,50 @@ def create_tf_model(input_shape, hidden_units, learning_rate):
                   loss='mean_squared_error')
     return model
 
+@st.cache_data
+def load_data(ticker_symbol, start, end):
+    try:
+        data = yf.download(ticker_symbol, start=start, end=end)
+        if data.empty:
+            return None
+        return data
+    except Exception as e:
+        st.error(f"Could not download data for ticker '{ticker_symbol}'. Please check the ticker symbol and the selected date range.")
+        return None
+
+def create_inout_sequences(input_data, seq_len):
+    X, y = [], []
+    for i in range(len(input_data) - seq_len):
+        X.append(input_data[i:i + seq_len])
+        y.append(input_data[i + seq_len, 0])
+    return np.array(X), np.array(y)
+
+def get_first_trading_date(ticker_symbol):
+    try:
+        stock = yf.Ticker(ticker_symbol)
+        hist = stock.history(period="max")
+        if not hist.empty:
+            return hist.index[0].to_pydatetime()
+    except Exception as e:
+        st.warning(f"Could not fetch first trading date for {ticker_symbol}: {e}")
+    return datetime(2005, 1, 1)
+
 # --- 3. Main Content ---
 with st.container():
-    st.sidebar.header("Data Range Selection")
-    start_date = st.sidebar.date_input("Start Date", value=datetime.now() - timedelta(days=10 * 365))
-    end_date = st.sidebar.date_input("End Date", value=datetime.now(), max_value=datetime.now() + timedelta(days=1))
+    st.sidebar.title("Stock Selection")
+    ticker_list = ["", "RELIANCE.NS", "TATAMOTORS.NS", "SBIN.NS", "INFY.NS", "HDFCBANK.NS", "ICICIBANK.NS", "TCS.NS"]
+    selected_ticker = st.sidebar.selectbox("Select Stock Ticker:", ticker_list)
+    custom_ticker = st.sidebar.text_input("Or Enter Custom Ticker:").upper()
 
-    if start_date >= end_date:
-        st.sidebar.error("Error: End date must be after start date.")
-        st.stop()
+    ticker = custom_ticker if custom_ticker else selected_ticker
+
+    if ticker:
+        first_trade_date = get_first_trading_date(ticker)
+    else:
+        first_trade_date = datetime(2005, 1, 1)
+
+    start_date = st.sidebar.date_input("Start Date", value=first_trade_date, min_value=first_trade_date)
+    end_date = st.sidebar.date_input("End Date", value=datetime.now(), min_value=start_date, max_value=datetime.now() + timedelta(days=1))
 
     st.sidebar.header("Hyperparameter Tuning")
     use_default_hyperparameters = st.sidebar.checkbox("Use Default Hyperparameters", True)
@@ -78,12 +115,7 @@ with st.container():
         batch_size = st.sidebar.select_slider("Batch Size", options=[16, 32, 64, 128], value=32)
         learning_rate = st.sidebar.select_slider("Learning Rate", options=[0.0001, 0.001, 0.01, 0.1], value=0.001)
 
-    ticker_list = ["", "RELIANCE.NS", "TATAMOTORS.NS", "SBIN.NS", "INFY.NS", "HDFCBANK.NS", "ICICIBANK.NS", "TCS.NS"]
-    selected_ticker = st.selectbox("Select Stock Ticker:", ticker_list)
-    custom_ticker = st.text_input("Or Enter Custom Ticker:").upper()
-
-    ticker = custom_ticker if custom_ticker else selected_ticker
-    predict_button = st.button("Predict")
+    predict_button = st.sidebar.button("Predict")
 
     if predict_button and ticker:
         with st.spinner(f"Running prediction for {ticker}... This may take a moment."):
@@ -96,16 +128,9 @@ with st.container():
                 plot_path = get_plot_path(ticker, plot_name)
 
                 # --- 5. Data Fetching and Preprocessing --
-                @st.cache_data
-                def load_data(ticker_symbol, start, end):
-                    data = yf.download(ticker_symbol, start=start, end=end)
-                    if data.empty:
-                        return None
-                    return data
-
                 df = load_data(ticker, start_date, end_date)
 
-                if df is None:
+                if df is None or df.empty:
                     if end_date > datetime.now().date():
                         st.error(f"Could not fetch data for '{ticker}'. Data for future dates is not available yet. Please select today or an earlier date.")
                     else:
@@ -123,6 +148,10 @@ with st.container():
                     df['Month'] = df.index.month
                     df.dropna(inplace=True)
 
+                    if len(df) < seq_length * 2:
+                        st.error(f"Not enough data for the selected date range and sequence length. Please select a longer date range.")
+                        st.stop()
+
                     FEATURES = ['Close', 'Volume', 'Open', 'High', 'Low', 'SMA', 'EMA', 'RSI', 'Day_of_week', 'Month']
                     INPUT_SIZE = len(FEATURES)
                     
@@ -139,15 +168,16 @@ with st.container():
                     close_price_scaler = MinMaxScaler(feature_range=(0, 1))
                     close_price_scaler.fit(train_data_df[['Close']])
 
-                    def create_inout_sequences(input_data, seq_len):
-                        X, y = [], []
-                        for i in range(len(input_data) - seq_len):
-                            X.append(input_data[i:i + seq_len])
-                            y.append(input_data[i + seq_len, 0])
-                        return np.array(X), np.array(y)
-
                     X_train, y_train = create_inout_sequences(train_data_scaled, seq_length)
+
+                    if len(X_train) == 0:
+                        st.error(f"Not enough data for the selected date range and sequence length to create a training set. Please select a longer date range.")
+                        st.stop()
                     X_test, y_test = create_inout_sequences(test_data_scaled, seq_length)
+
+                    if len(X_test) == 0:
+                        st.error(f"Not enough data for the selected date range and sequence length to create a test set. Please select a longer date range.")
+                        st.stop()
 
                     # --- 8. Model Training or Loading ---
                     if not model_exists(model_path):
@@ -171,7 +201,27 @@ with st.container():
                         status_text.empty()
                     else:
                         st.success(f"Loading pre-trained model for {ticker} from {model_path}")
-                        model = load_model(model_path)
+                        try:
+                            model = load_model(model_path)
+                        except Exception as e:
+                            st.error(f"Could not load model: {e}. Training a new model instead.")
+                            model = create_tf_model((seq_length, INPUT_SIZE), hidden_layer_size, learning_rate)
+                            
+                            progress_bar = st.progress(0)
+                            status_text = st.empty()
+
+                            class StqdmCallback(tf.keras.callbacks.Callback):
+                                def on_epoch_end(self, epoch, logs=None):
+                                    progress_bar.progress((epoch + 1) / epochs)
+                                    status_text.text(f"Epoch {epoch+1}/{epochs} | Loss: {logs['loss']:.6f}")
+
+                            history = model.fit(X_train, y_train, epochs=epochs, batch_size=batch_size, 
+                                                callbacks=[StqdmCallback()], verbose=0)
+
+                            model.save(model_path)
+                            st.success(f"Model trained and saved to {model_path}")
+                            progress_bar.empty()
+                            status_text.empty()
                     
                     with open(model_path, "rb") as fp:
                         st.download_button(
