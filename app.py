@@ -1,5 +1,6 @@
-import sys
 import os
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
+import sys
 import streamlit as st
 import yfinance as yf
 import numpy as np
@@ -52,10 +53,11 @@ def load_data(ticker_symbol, start, end):
     try:
         data = yf.download(ticker_symbol, start=start, end=end)
         if data.empty:
+            st.error(f"No data found for {ticker_symbol} in the selected date range.")
             return None
         return data
     except Exception as e:
-        st.error(f"Could not download data for ticker '{ticker_symbol}'. Please check the ticker symbol and the selected date range.")
+        st.error(f"Could not download data for ticker '{ticker_symbol}'. Reason: {e}")
         return None
 
 def create_inout_sequences(input_data, seq_len):
@@ -71,6 +73,9 @@ def get_first_trading_date(ticker_symbol):
         hist = stock.history(period="max")
         if not hist.empty:
             return hist.index[0].to_pydatetime()
+        else:
+            st.warning(f"No history found for {ticker_symbol}, it may be delisted.")
+            return datetime(2005, 1, 1)
     except Exception as e:
         st.warning(f"Could not fetch first trading date for {ticker_symbol}: {e}")
     return datetime(2005, 1, 1)
