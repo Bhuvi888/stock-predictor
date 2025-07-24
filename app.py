@@ -80,6 +80,21 @@ def get_first_trading_date(ticker_symbol):
         st.warning(f"Could not fetch first trading date for {ticker_symbol}: {e}")
     return datetime(2005, 1, 1)
 
+def is_valid_ticker(ticker_symbol):
+    try:
+        stock = yf.Ticker(ticker_symbol)
+        # A valid ticker should have some info.
+        if stock.info and len(stock.info) > 1:
+            return True
+        else:
+            # If no info, try to get history as a fallback
+            hist = stock.history(period="1d")
+            if not hist.empty:
+                return True
+            return False
+    except Exception:
+        return False
+
 # --- 3. Main Content ---
 with st.container():
     st.sidebar.title("Stock Selection")
@@ -88,6 +103,11 @@ with st.container():
     custom_ticker = st.sidebar.text_input("Or Enter Custom Ticker:").upper()
 
     ticker = custom_ticker if custom_ticker else selected_ticker
+
+    if custom_ticker:
+        if not is_valid_ticker(ticker):
+            st.sidebar.error(f"The custom ticker '{ticker}' is not a valid Yahoo Finance ticker. Please enter a valid one.")
+            st.stop()
 
     if ticker:
         first_trade_date = get_first_trading_date(ticker)
