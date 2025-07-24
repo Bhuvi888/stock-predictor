@@ -83,33 +83,26 @@ def get_first_trading_date(ticker_symbol):
 def is_valid_ticker(ticker_symbol):
     try:
         stock = yf.Ticker(ticker_symbol)
-        # A valid ticker should have some info.
-        if stock.info and len(stock.info) > 1:
+        # A valid ticker should have a shortName or some historical data.
+        if stock.info.get('shortName') or not stock.history(period="max").empty:
             return True
-        else:
-            # If no info, try to get history as a fallback
-            hist = stock.history(period="1d")
-            if not hist.empty:
-                return True
-            return False
+        return False
     except Exception:
         return False
 
 # --- 3. Main Content ---
 with st.container():
     st.sidebar.title("Stock Selection")
-    ticker_list = ["", "RELIANCE.NS", "TATAMOTORS.NS", "SBIN.NS", "INFY.NS", "HDFCBANK.NS", "ICICIBANK.NS", "TCS.NS"]
+    ticker_list = ["", "RELIANCE.NS", "TATAMOTORS.NS", "SBIN.NS", "INFY.NS", "HDFCBANK.NS", "ICICIBANK.NS", "TCS.NS", "HDFC.NS"]
     selected_ticker = st.sidebar.selectbox("Select Stock Ticker:", ticker_list)
     custom_ticker = st.sidebar.text_input("Or Enter Custom Ticker:").upper()
 
     ticker = custom_ticker if custom_ticker else selected_ticker
 
-    if custom_ticker:
-        if not is_valid_ticker(ticker):
-            st.sidebar.error(f"The custom ticker '{ticker}' is not a valid Yahoo Finance ticker. Please enter a valid one.")
-            st.stop()
-
     if ticker:
+        if not is_valid_ticker(ticker):
+            st.sidebar.error(f"The ticker '{ticker}' is not valid or has no data on Yahoo Finance.")
+            st.stop()
         first_trade_date = get_first_trading_date(ticker)
     else:
         first_trade_date = datetime(2005, 1, 1)
