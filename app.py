@@ -94,8 +94,21 @@ with st.container():
     else:
         first_trade_date = datetime(2005, 1, 1)
 
-    start_date = st.sidebar.date_input("Start Date", value=first_trade_date, min_value=first_trade_date)
-    end_date = st.sidebar.date_input("End Date", value=datetime.now(), min_value=start_date, max_value=datetime.now() + timedelta(days=1))
+    end_date = st.sidebar.date_input("End Date", value=datetime.now(), max_value=datetime.now() + timedelta(days=1))
+    
+    # Set default start date to 10 years before the end date
+    default_start_date = end_date - timedelta(days=365 * 10)
+    
+    # Ensure default start date is not earlier than the first trade date
+    if default_start_date < first_trade_date.date():
+        default_start_date = first_trade_date.date()
+
+    start_date = st.sidebar.date_input("Start Date", value=default_start_date, min_value=first_trade_date.date(), max_value=end_date)
+
+    # --- Date Validation ---
+    if (end_date - start_date).days < 365:
+        st.sidebar.error("The difference between the start and end date must be at least 1 year.")
+        st.stop()
 
     st.sidebar.header("Hyperparameter Tuning")
     use_default_hyperparameters = st.sidebar.checkbox("Use Default Hyperparameters", True)
